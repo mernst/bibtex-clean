@@ -3,14 +3,14 @@ plugins {
   id("application")
 
   // To create a fat jar build/libs/...-all.jar, run: ./gradlew shadowJar
-  id("com.gradleup.shadow").version("9.3.1")
+  alias(libs.plugins.com.gradleup.shadow)
 
   // Code formatting; defines targets "spotlessApply" and "spotlessCheck"
-  // Version 8.0.0 and later requires Java 17+.
-  id("com.diffplug.spotless").version("8.2.1")
+  // which are run by "check" (which is itself run by "build").
+  alias(libs.plugins.com.diffplug.spotless)
 
   // Error Prone linter
-  id("net.ltgt.errorprone").version("5.0.0") apply false
+  alias(libs.plugins.net.ltgt.errorprone) apply false
 
   // PMD linter
   id("pmd")
@@ -19,7 +19,7 @@ plugins {
   id("jacoco")
 
   // Checker Framework pluggable type-checking
-  id("org.checkerframework").version("1.0.2")
+  alias(libs.plugins.org.checkerframework)
 }
 
 repositories {
@@ -29,17 +29,11 @@ repositories {
   gradlePluginPortal()
 }
 
-ext {
-  errorproneVersion = "2.47.0"
-  isJava17orHigher = JavaVersion.current() >= JavaVersion.VERSION_17
-  isJava21orHigher = JavaVersion.current() >= JavaVersion.VERSION_21
-}
-
 dependencies {
-  implementation("org.plumelib:plume-util:1.13.0")
+  implementation(libs.plume.util)
 
-  testImplementation("org.junit.jupiter:junit-jupiter:6.0.2")
-  testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+  testImplementation(libs.junit.jupiter)
+  testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 application {
@@ -47,8 +41,14 @@ application {
 }
 
 java {
-  sourceCompatibility = JavaVersion.VERSION_11
-  targetCompatibility = JavaVersion.VERSION_11
+  toolchain {
+    // Always compile using Java 21, but test using various Java versions.
+    languageVersion = JavaLanguageVersion.of(21)
+  }
+}
+tasks.withType(JavaCompile).configureEach {
+  // Set the language level and byte code to 17.
+  options.release = 17
 }
 
 test {
@@ -108,29 +108,20 @@ tasks.withType(JavaCompile).configureEach {
   options.forkOptions.jvmArgs += "-Xmx6g"
   options.compilerArgs << "-Werror"
   // "-processing" avoids javac warning "No processor claimed any of these annotations".
-  if (isJava21orHigher) {
-    options.compilerArgs << "-Xlint:all,-processing,-this-escape"
-  } else {
-    options.compilerArgs << "-Xlint:all,-processing"
-  }
+  options.compilerArgs << "-Xlint:all,-processing"
 }
-if (isJava21orHigher) {
-  apply plugin: "net.ltgt.errorprone"
-  dependencies {
-    errorprone("com.google.errorprone:error_prone_core:${errorproneVersion}")
-  }
-  tasks.withType(JavaCompile).configureEach {
-    options.errorprone {
-      disable("AnnotateFormatMethod") // Error Prone doesn't know about Checker Framework @FormatMethod.
-      disable("DoNotCallSuggester") // Suggests use of an Error Prone annotation.
-      disable("EffectivelyPrivate") // Loses information about the abstraction.
-      disable("ExtendsObject")  // Incorrect when using the Checker Framework.
-      disable("InlineMeSuggester") // Using `@InlineMe` requires clients to declare a dependency on error_prone_annotations.
-      disable("PatternMatchingInstanceof") // requires Java 16 or later
-      disable("ReferenceEquality") // Use Interning Checker instead.
-      disable("StatementSwitchToExpressionSwitch") // requires Java 12 or later
-      disable("StringConcatToTextBlock") // requires Java 15 or later
-    }
+apply plugin: "net.ltgt.errorprone"
+dependencies {
+  errorprone(libs.error.prone.core)
+}
+tasks.withType(JavaCompile).configureEach {
+  options.errorprone {
+    disable("AnnotateFormatMethod") // Error Prone doesn't know about Checker Framework @FormatMethod.
+    disable("DoNotCallSuggester") // Suggests use of an Error Prone annotation.
+    disable("EffectivelyPrivate") // Loses information about the abstraction.
+    disable("ExtendsObject")  // Incorrect when using the Checker Framework.
+    disable("InlineMeSuggester") // Using `@InlineMe` requires clients to declare a dependency on error_prone_annotations.
+    disable("ReferenceEquality") // Use Interning Checker instead.
   }
 }
 
@@ -138,7 +129,7 @@ if (isJava21orHigher) {
 // PMD linter
 
 pmd {
-  toolVersion = "7.21.0"
+  toolVersion = "7.25.0"
   ruleSetFiles = files("${rootDir}/.pmd-ruleset.xml")
   consoleOutput = true
   ignoreFailures = false
@@ -152,7 +143,7 @@ pmdTest.enabled = false
 apply plugin: "org.checkerframework"
 
 checkerFramework {
-  version = libs.checker.get().version
+  version = libs.checker.framework.get().version
   checkers = [
     // No need to run CalledMethodsChecker, because ResourceLeakChecker does so.
     // "org.checkerframework.checker.calledmethods.CalledMethodsChecker",
@@ -189,7 +180,6 @@ javadoc {
   // Turn Javadoc warnings into errors.
   options.addStringOption("Xwerror", "-Xdoclint:all")
   options.addStringOption("private", "-quiet")
-  options.addStringOption("source", "11")
   doLast {
     ant.replaceregexp(match:"@import url\\('resources/fonts/dejavu.css'\\);\\s*", replace:"",
     flags:"g", byline:true) {
@@ -203,7 +193,7 @@ configurations {
   requireJavadoc
 }
 dependencies {
-  requireJavadoc("org.plumelib:require-javadoc:2.0.0")
+  requireJavadoc(libs.require.javadoc)
 }
 def requireJavadoc = tasks.register("requireJavadoc", JavaExec) {
   group = "Documentation"
