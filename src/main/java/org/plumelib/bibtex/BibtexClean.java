@@ -30,7 +30,6 @@ import org.plumelib.util.FilesP;
 // "long entries" start after a blank line.  (That can be considered an
 // EntryReader bug, or at least inflexibility in its interface.)
 
-@SuppressWarnings("deprecation") // uses deprecated classes in this package
 public final class BibtexClean {
 
   /** This class is a collection of methods; it does not represent anything. */
@@ -39,7 +38,7 @@ public final class BibtexClean {
   }
 
   /** Regex for the end of a BibTeX entry. */
-  private static final Pattern entry_end =
+  private static final Pattern entryEnd =
       Pattern.compile(
           "^[ \t]*"
               + ("("
@@ -68,48 +67,65 @@ public final class BibtexClean {
       File inFile = new File(filename);
       File outFile = new File(inFile.getName()); // in current directory
       // Delete the file to work around a bug.  Files.newBufferedWriter (which is called by
-      // FilesP.bufferedFileWriter) seems to have a bug where it does not correctly truncate the
+      // FilesP.newBufferedFileWriter) seems to have a bug where it does not correctly truncate the
       // file first.  If the target file already exists, then characters beyond what is written
       // remain in the file.
       outFile.delete();
       try (PrintWriter out = new PrintWriter(FilesP.newBufferedFileWriter(outFile.toString()));
           EntryReader er = new EntryReader(filename)) {
-        for (String line : er) {
-          if (line.isEmpty() || line.startsWith("%")) {
-            out.println(line);
-          } else if (line.startsWith("@")) {
-            out.println(line);
-            if (!stringDef.matcher(line).matches()) {
-              String entryStartLine = line;
-              int entryStartLineNumber = er.getLineNumber();
-              boolean entryClosed = false;
-              while (er.hasNext()) {
-                String line2 = er.next(); // not null because `er.hasNext()` returned true
-                out.println(line2);
-                if (line2.isEmpty()) {
-                  System.err.printf(
-                      "%s:%d: unterminated entry: %s%n",
-                      er.getFileName(), entryStartLineNumber, entryStartLine);
-                  entryClosed = true;
-                  break;
-                }
-                if (entry_end.matcher(line2).lookingAt()) {
-                  entryClosed = true;
-                  break;
-                }
-              }
-              if (!entryClosed) {
-                System.err.printf(
-                    "%s:%d: unterminated entry at EOF: %s%n",
-                    er.getFileName(), entryStartLineNumber, entryStartLine);
-              }
-            }
-          }
-        }
+        clean(er, out);
       } catch (IOException e) {
         System.err.printf(
             "Problem reading %s or writing %s: %s%n", inFile, outFile, e.getMessage());
         System.exit(2);
+      }
+    }
+  }
+
+  /**
+   * Copy BibTeX from {@code er} to {@code out}, removing text outside BibTeX entries.
+   *
+   * <p>This method does not close {@code er} or {@code out}; the caller retains ownership of both.
+   * Diagnostics about unterminated entries are written to standard error.
+   *
+   * @param er the BibTeX to read
+   * @param out where to write the cleaned BibTeX
+   */
+  static void clean(EntryReader er, PrintWriter out) {
+    for (String line : er) {
+      if (line.isEmpty() || line.startsWith("%")) {
+        out.println(line);
+      } else if (line.startsWith("@")) {
+        out.println(line);
+        if (!stringDef.matcher(line).matches()) {
+          String entryStartLine = line;
+          // Capture the file name and line number before the loop below, because reaching
+          // end of input closes the reader, after which `er.getFileName()` and
+          // `er.getLineNumber()` throw an exception.
+          String entryStartFileName = er.getFileName();
+          int entryStartLineNumber = er.getLineNumber();
+          boolean entryClosed = false;
+          while (er.hasNext()) {
+            String line2 = er.next(); // not null because `er.hasNext()` returned true
+            out.println(line2);
+            if (line2.isEmpty()) {
+              System.err.printf(
+                  "%s:%d: unterminated entry: %s%n",
+                  entryStartFileName, entryStartLineNumber, entryStartLine);
+              entryClosed = true;
+              break;
+            }
+            if (entryEnd.matcher(line2).lookingAt()) {
+              entryClosed = true;
+              break;
+            }
+          }
+          if (!entryClosed) {
+            System.err.printf(
+                "%s:%d: unterminated entry at EOF: %s%n",
+                entryStartFileName, entryStartLineNumber, entryStartLine);
+          }
+        }
       }
     }
   }
