@@ -124,6 +124,78 @@ public final class BibtexCleanTest {
   }
 
   @Test
+  public void closingBraceOfFieldValueDoesNotEndEntry() throws IOException {
+    // The "}," line closes the brace that the abstract opened, not the one that the entry opened,
+    // so the entry continues.
+    String input =
+        lines(
+            "@article{k,",
+            "  abstract = {A long abstract",
+            "    that continues on another line",
+            "  },",
+            "  year = 2020",
+            "}",
+            "trailing junk that must be dropped");
+    String expected =
+        lines(
+            "@article{k,",
+            "  abstract = {A long abstract",
+            "    that continues on another line",
+            "  },",
+            "  year = 2020",
+            "}");
+    CleanResult result = clean(input);
+    assertEquals(expected, result.out());
+    assertEquals("", result.err());
+  }
+
+  @Test
+  public void keepsIndentedEntry() throws IOException {
+    // BibTeX permits whitespace before the "@".
+    String input = lines("  @article{k,", "  year = 2020", "}", "noise");
+    String expected = lines("  @article{k,", "  year = 2020", "}");
+    assertEquals(expected, cleaned(input));
+  }
+
+  @Test
+  public void singleLineEntryIsComplete() throws IOException {
+    // The entry's value contains nested braces and a backslash-escaped brace.
+    String input = lines("@preamble{\"\\newcommand{\\noop}[1]{}\"}", "noise");
+    String expected = lines("@preamble{\"\\newcommand{\\noop}[1]{}\"}");
+    assertEquals(expected, cleaned(input));
+  }
+
+  @Test
+  public void keepsStringDefinitionWithTrailingSpace() throws IOException {
+    String input = lines("@string{pub = \"Publisher\"} ", "more noise");
+    String expected = lines("@string{pub = \"Publisher\"} ");
+    assertEquals(expected, cleaned(input));
+  }
+
+  @Test
+  public void endsEntryAfterAbbreviationFieldValue() throws IOException {
+    String input = lines("@article{k,", "  journal = jacm}", "noise");
+    String expected = lines("@article{k,", "  journal = jacm}");
+    CleanResult result = clean(input);
+    assertEquals(expected, result.out());
+    assertEquals("", result.err());
+  }
+
+  @Test
+  public void unmatchedParenInBracedValueDoesNotEndEntry() throws IOException {
+    String input = lines("@article{k,", "  note = {A smiley :-)},", "  year = 2020", "}", "noise");
+    String expected = lines("@article{k,", "  note = {A smiley :-)},", "  year = 2020", "}");
+    assertEquals(expected, cleaned(input));
+  }
+
+  @Test
+  public void atLineWithNoDelimiterIsAnEntryByItself() throws IOException {
+    String input = lines("@ this line is not an entry", "noise");
+    String expected = lines("@ this line is not an entry");
+    assertEquals(expected, cleaned(input));
+  }
+
+  @Test
   public void unterminatedEntryAtBlankLine() throws IOException {
     // A blank line ends an entry.  The entry is copied out verbatim, and a diagnostic that names
     // the line on which the entry started is written to the error stream.
